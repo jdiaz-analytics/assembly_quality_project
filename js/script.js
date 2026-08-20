@@ -12,7 +12,7 @@ function renderSelectOptions(selectId, options, placeholder){
 // ---------- form validation (real-time) ----------
 function isFieldValid(id){
   const val = document.getElementById(id).value;
-  if(id==='fFecha') return val !== '';
+  if(id==='fFecha' || id==='fEstacion' || id==='fCausa') return val !== '';
   if(id==='fProducto' || id==='fOrden') return val.trim() !== '';
   const n = Number(val);
   return val !== '' && !Number.isNaN(n) && n >= 0;
@@ -80,7 +80,7 @@ let loadedFromDate = null;
 let pendingRecord = null;
 let session = null;
 
-const REQUIRED_FIELDS = ['fProducto','fOrden','fCantidad','fOk','fNok','fRw','fFecha'];
+const REQUIRED_FIELDS = ['fProducto','fOrden','fCantidad','fOk','fNok','fRw','fFecha','fEstacion','fCausa'];
 const DEFAULT_RANGE_DAYS = 30;
 const FTY_META = 95;
 
@@ -605,6 +605,7 @@ document.getElementById('tabRegistroBtn').addEventListener('click', ()=>{
   requestAnimationFrame(()=>document.getElementById('fProducto').focus());
 });
 document.getElementById('tabPanelBtn').addEventListener('click', ()=>{
+  if(!session || session.rol !== 'administrador') return;
   activeTab='panel';
   document.getElementById('tabPanelBtn').classList.add('active');
   document.getElementById('tabRegistroBtn').classList.remove('active');
@@ -617,9 +618,10 @@ document.getElementById('fCausa').addEventListener('change', ()=>{
   const otros = document.getElementById('fCausa').value === CAUSA_OTROS;
   document.getElementById('fComentarioCausaWrap').classList.toggle('hidden', !otros);
   if(!otros) document.getElementById('fComentarioCausa').value = '';
-  updateSaveButtonState();
+  handleFormFieldChange('fCausa');
 });
 document.getElementById('fComentarioCausa').addEventListener('input', updateSaveButtonState);
+document.getElementById('fEstacion').addEventListener('change', ()=>handleFormFieldChange('fEstacion'));
 
 document.getElementById('saveRecordBtn').addEventListener('click', ()=>{
   const ordenTrabajo = document.getElementById('fOrden').value.trim();
@@ -639,6 +641,11 @@ document.getElementById('saveRecordBtn').addEventListener('click', ()=>{
   const errEl = document.getElementById('formError');
   if(!ordenTrabajo || !codigoProducto || !fecha || !operarioId){
     errEl.textContent = 'Completá orden de trabajo, código de producto, fecha y operario.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  if(!estacionSel || !causaSel){
+    errEl.textContent = 'Completá Estación de armado y Causa NOK-Retrabajo.';
     errEl.classList.remove('hidden');
     return;
   }
@@ -673,6 +680,14 @@ document.getElementById('modalCancelBtn').addEventListener('click', closeConfirm
 document.getElementById('modalConfirmBtn').addEventListener('click', async ()=>{
   if(!pendingRecord) return;
   const record = pendingRecord;
+  if(record.estacionArmado.length===0 || record.causaNokRetrabajo.length===0){
+    closeConfirmModal();
+    const errEl = document.getElementById('formError');
+    errEl.textContent = 'Completá Estación de armado y Causa NOK-Retrabajo.';
+    errEl.classList.remove('hidden');
+    updateSaveButtonState();
+    return;
+  }
   const confirmBtn = document.getElementById('modalConfirmBtn');
   confirmBtn.disabled = true;
   const saved = await insertRecord(record);
@@ -887,6 +902,7 @@ function enterApp(){
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appRoot').classList.remove('hidden');
   document.getElementById('sessionUserDisplay').textContent = session.nombreCompleto;
+  document.getElementById('tabPanelBtn').classList.toggle('hidden', session.rol !== 'administrador');
   requestAnimationFrame(()=>document.getElementById('fProducto').focus());
 }
 function showLoginScreen(){
@@ -918,7 +934,7 @@ async function attemptLogin(){
       errEl.textContent = 'Usuario o contraseña incorrectos.';
       errEl.classList.remove('hidden');
     }else{
-      session = { operarioId: row.operario_id || row.id, nombreCompleto: row.nombre_completo };
+      session = { operarioId: row.operario_id || row.id, nombreCompleto: row.nombre_completo, rol: row.rol };
       sessionStorage.setItem('session', JSON.stringify(session));
       enterApp();
     }

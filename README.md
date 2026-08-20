@@ -79,7 +79,7 @@ Orden: Código de producto → N° orden de trabajo → Cantidad ordenada → Ca
 
 La app está detrás de una pantalla de login (`#loginScreen`) que tapa todo — ni Registro ni Panel FTY son accesibles sin loguearse. El login llama a `supabaseClient.rpc('login_operario', { p_legajo, p_pin })`:
 - El legajo se normaliza (mayúsculas, sin espacios) antes de enviarlo.
-- Si la RPC devuelve una fila, se guarda `{ operarioId, nombreCompleto }` en `sessionStorage` (se pierde al cerrar el navegador/pestaña, sobrevive un F5) y se entra a la app.
+- Si la RPC devuelve una fila, se guarda `{ operarioId, nombreCompleto, rol }` en `sessionStorage` (se pierde al cerrar el navegador/pestaña, sobrevive un F5) y se entra a la app.
 - Si no devuelve fila, un único mensaje genérico: "Usuario o contraseña incorrectos" (no distingue usuario inexistente / inactivo / PIN incorrecto, a propósito).
 - Si ya hay sesión guardada en `sessionStorage` al cargar la página, se saltea el login directo a la app.
 - Botón "Cerrar sesión" en el header: borra la sesión y vuelve a mostrar el login.
@@ -87,6 +87,17 @@ La app está detrás de una pantalla de login (`#loginScreen`) que tapa todo —
 **Supuesto que hice sobre la forma de la fila devuelta por `login_operario`**: como no tengo la definición exacta de la RPC, `js/script.js` acepta tanto `row.id` como `row.operario_id` como el identificador del operario (`session.operarioId = row.operario_id || row.id`). Si la RPC devuelve el id con otro nombre de columna, hay que ajustar esa línea en `attemptLogin()`.
 
 Una vez logueado, el operario **ya no se elige de un `<select>` ni se pide PIN al guardar** — el formulario de Registro muestra el nombre de la sesión como texto fijo ("Cargando como: {nombre}"), y el registro se guarda con el `operarioId` de la sesión. El modal de confirmación (`#confirmModal`) sigue mostrando el nombre del operario en el resumen, para que la persona verifique visualmente que está cargando a su propio nombre antes de guardar — pero ya no hace la verificación de PIN ahí (se hizo una sola vez, en el login). La RPC `verify_operario_pin` que se usaba antes en el modal quedó sin uso en el frontend.
+
+### Roles: operador / administrador
+
+`login_operario` devuelve un campo `rol` (`'operador'` o `'administrador'`), que se guarda en la sesión junto con `operarioId`/`nombreCompleto`. Con `rol !== 'administrador'`, la pestaña "Panel FTY" (`#tabPanelBtn`) directamente no se muestra en el header — no queda deshabilitada, se oculta (`classList.toggle('hidden', ...)` en `enterApp()`). El handler de click de esa pestaña también valida el rol antes de mostrar `#panelView`, así que aunque alguien la vuelva a mostrar manipulando el DOM desde la consola, tocarla no hace nada si no es administrador.
+
+**Esto es un control de interfaz, no de seguridad de datos** — oculta la pestaña del lado del cliente, pero no restringe a nivel de base de datos qué puede leer un operario (eso ya lo maneja, o debería manejarlo, RLS en Supabase si hace falta). El formulario de Registro sigue disponible igual para ambos roles.
+
+Para promover a alguien a administrador, se corre un `UPDATE` directo en Supabase:
+```sql
+update operarios set rol = 'administrador' where legajo = 'ARJDI';
+```
 
 El filtro "Operario" de Panel FTY (para supervisores) no se tocó — sigue siendo el `<select>` con todos los operarios activos, igual que antes.
 
